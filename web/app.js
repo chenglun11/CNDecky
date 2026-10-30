@@ -8,8 +8,15 @@ let toastTimer;
 function toast(message) { $('#toast').textContent = message; $('#toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 3000); }
 async function request(path) {
   const response = await fetch(path, { signal: AbortSignal.timeout(90000) });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || `服务返回 ${response.status}`);
+  const text = await response.text();
+  let body;
+  try { body = JSON.parse(text); }
+  catch {
+    if (!response.ok) throw new Error(`接口 ${path} 返回 HTTP ${response.status}，请检查 Worker 部署和路由`);
+    if (!text.trim()) throw new Error(`接口 ${path} 返回空内容（HTTP ${response.status}），请确认 Worker 后端已部署`);
+    throw new Error(`接口 ${path} 未返回有效 JSON（HTTP ${response.status}），请检查部署入口是否只包含静态网页`);
+  }
+  if (!response.ok) throw new Error(typeof body?.error === 'string' ? body.error : `接口 ${path} 返回 HTTP ${response.status}`);
   return { body, stale: response.headers.get('X-CNDecky-Cache') === 'STALE' };
 }
 function updateCommand() {

@@ -17,12 +17,12 @@ npm run dev
 
 ## 部署到自己的域名
 
-1. 当前 `worker/wrangler.jsonc` 已将 `vars.PUBLIC_BASE_URL` 配为 `https://decky.lchnan.cn`，并绑定该自定义域名。部署到其他域名时，同时修改地址和 `routes`；安装器不会采用访问者传入的 Host。`npm run dev` 会将地址覆盖为本地 HTTP 预览。
+1. 当前 `worker/wrangler.jsonc` 已将 `vars.PUBLIC_BASE_URL` 配为 `https://cndecky.lchnan.cn`，并绑定该自定义域名。部署到其他域名时，同时修改地址和 `routes`；安装器不会采用访问者传入的 Host。`npm run dev` 会将地址覆盖为本地 HTTP 预览。
 2. 确认 `lchnan.cn` 已托管到要部署的 Cloudflare 账户。配置中的域名绑定如下：
 
    ```json
    "routes": [
-     { "pattern": "decky.lchnan.cn", "custom_domain": true }
+     { "pattern": "cndecky.lchnan.cn", "custom_domain": true }
    ],
    "workers_dev": false
    ```
@@ -49,6 +49,32 @@ npx wrangler secret put GITHUB_TOKEN
 按提示粘贴 token，不要写进 `vars`、Git 仓库或浏览器。token 只用于初始 `api.github.com` 请求，重定向和其他域名不会收到它。也可在被 Git 忽略的 `worker/.dev.vars` 中设置本地开发用 token。不要把开发文件包含在发布包中。
 
 安装、换源、恢复动作与 Docker 版一致。两种部署间切换时，在目标站点选择「仅切换源」，无需重装 Decky。已有插件保留。
+
+## 在 Cloudflare 网页连接 GitHub 自动部署
+
+本仓库同时包含 Docker 和 Worker 项目。**Worker 项目的根目录必须选择 `worker`**，这样构建才会使用 `worker/wrangler.jsonc` 中的后端入口与静态资源绑定。
+
+进入 **Workers & Pages → cndecky → 设置 → 构建**，配置：
+
+| 配置项 | 值 |
+| --- | --- |
+| GitHub 仓库 | `chenglun11/CNDecky` |
+| 生产分支 | `main` |
+| 根目录 / Root directory | `worker` |
+| 构建命令 / Build command | `npm run build` |
+| 部署命令 / Deploy command | `npm run deploy` |
+
+Cloudflare 会按 `worker/package-lock.json` 安装依赖。构建命令生成共用安装器资源，部署命令发布 Worker 后端和 `web/` 中的页面。不要把部署命令设置为只上传 `web/` 的 `wrangler deploy --assets ...`；也不需要填写静态站点的输出目录。
+
+网页自动构建需要显式填写 `npm run build`：[Workers Builds 不执行 Wrangler 配置中的自定义构建步骤](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)，不能只依赖配置中的 `build.command`。本机命令行部署仍会执行该步骤。
+
+保存后，从构建列表重新部署最新 `main`。检查：
+
+- `https://cndecky.lchnan.cn/healthz` 返回 `{"ok":true}`。
+- `/api/status` 返回 JSON，包含 `"mode":"proxy"` 和正确的 `origin`。
+- `/plugins` 返回插件 JSON 列表，`/launchers/install.desktop` 能下载安装器。
+
+如果首页可以打开，但以上接口全部返回空的 404，说明当前站点只提供静态文件，Worker 后端没有处理这些请求。先检查根目录和部署命令；无需修改插件哈希或安装脚本来绕过这个问题。
 
 ## 转发范围与校验
 

@@ -9,7 +9,7 @@
 | **Docker + Python + SQLite** | 本地文件缓存、索引、命中统计 | 已有新加坡服务器，需要重复下载复用缓存 |
 | **Cloudflare Worker** | 纯流式转发，不保存文件或下载历史 | 主要解决 GitHub / 官方源连不上或慢，不想维护服务器 |
 
-两种方式都可使用自己的 HTTPS 域名，例如 `decky.lchnan.cn`。Worker 的安装和部署步骤见 **[worker/README.md](worker/README.md)**；下方 Docker 章节适用于服务器版。两者可同时存在于不同域名，在目标站点运行「仅切换源」即可切换。
+Worker 的正式地址配置为 `cndecky.lchnan.cn`；下方 Docker 章节使用 `decky.lchnan.cn` 作为可修改的服务器示例。Worker 的安装、命令行部署和 Cloudflare 网页构建配置见 **[worker/README.md](worker/README.md)**。两者可同时存在于不同域名，在目标站点运行「仅切换源」即可切换。
 
 ## 能做什么
 
@@ -129,6 +129,7 @@ curl -f http://localhost:8080/api/status
 python3 -m unittest discover -s tests -v
 python3 -m py_compile cndecky/server.py scripts/client.py
 node --check web/app.js
+node --test tests/frontend.test.mjs
 sh -n scripts/install.sh
 docker compose config --quiet
 # Worker 版另在 worker/ 目录运行 npm ci、npm test、npm run check
