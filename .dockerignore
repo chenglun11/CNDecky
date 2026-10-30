@@ -1,0 +1,14 @@
+.git
+.env
+.cache
+.fast-dev
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+tests
+docs
+deploy
+.wrangler
+worker
+node_modules

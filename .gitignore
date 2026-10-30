@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.cache/
+.fast-dev/
+.DS_Store
+node_modules/
+.wrangler/
+.dev.vars*
+worker/generated.mjs
+worker/dist/

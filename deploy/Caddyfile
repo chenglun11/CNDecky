@@ -1,0 +1,6 @@
+# Put this block into your server's existing Caddy config.
+# Point decky.lchnan.cn DNS at the Singapore server first.
+decky.lchnan.cn {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8080
+}
