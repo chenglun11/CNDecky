@@ -17,8 +17,8 @@ npm run dev
 
 ## 部署到自己的域名
 
-1. 在 `worker/wrangler.jsonc` 中把 `vars.PUBLIC_BASE_URL` 改成正式 HTTPS 地址，例如 `https://decky.lchnan.cn`。这必须与实际打开的域名一致，安装器不会采用访问者传入的 Host。
-2. 如果 `lchnan.cn` 已托管到你的 Cloudflare 账户，在配置顶层加入：
+1. 当前 `worker/wrangler.jsonc` 已将 `vars.PUBLIC_BASE_URL` 配为 `https://decky.lchnan.cn`，并绑定该自定义域名。部署到其他域名时，同时修改地址和 `routes`；安装器不会采用访问者传入的 Host。`npm run dev` 会将地址覆盖为本地 HTTP 预览。
+2. 确认 `lchnan.cn` 已托管到要部署的 Cloudflare 账户。配置中的域名绑定如下：
 
    ```json
    "routes": [
@@ -38,7 +38,7 @@ npm run dev
 
 4. 打开正式域名，确认页面显示「流式转发」、商店列表和稳定版正常。下载启动器，在掌机桌面模式双击，按提示允许执行并输入 sudo 密码。
 
-没有自定义域名时，也可先部署到自己的 `workers.dev` 地址，再将 `PUBLIC_BASE_URL` 改为实际分配的 HTTPS 地址并重新部署。掌机所在网络需能访问该地址；建议最终使用自己的域名。`npm run check` 是本地打包检查，不创建云资源。
+没有自定义域名时，删除 `routes` 并将 `workers_dev` 改为 `true`，可先部署到自己的 `workers.dev` 地址，再将 `PUBLIC_BASE_URL` 改为实际分配的 HTTPS 地址并重新部署。掌机所在网络需能访问该地址；建议最终使用自己的域名。当前配置关闭 `workers.dev` 和版本预览地址，只通过指定域名提供服务。`npm run check` 是本地打包检查，不创建云资源。
 
 GitHub 匿名 API 有请求限额。如果版本查询返回限流，可选用仅能读取公共发布信息的 token：
 
