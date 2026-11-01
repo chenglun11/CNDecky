@@ -123,6 +123,12 @@ curl -f http://localhost:8080/api/status
 - 安装计数接口在本站确认，不向官方发送个人下载计数。
 - 不提供删除缓存的网页接口；需要完整重置时，先停止容器，再备份/清空专用数据卷。
 
+## 网页访问统计
+
+共用首页已接入自建 Umami（`https://lab.lchnan.cn`），Worker 和 Docker 版均使用同一站点 ID。统计脚本以 `defer` 加载，自动记录网页访问；没有添加下载或安装完成事件，终端安装和 Decky 商店 API 请求也不会触发网页统计。
+
+`web/index.html` 中的 `data-domains` 将上报限定为 `cndecky.lchnan.cn` 和 `decky.lchnan.cn`，本地预览不计入。部署到其他域名或复用本仓库时，请修改跟踪脚本的 `src`、`data-website-id` 和 `data-domains`，或移除该标签以关闭统计；站点 ID 是公开配置，不是 API token。
+
 ## 开发与验证
 
 ```sh
