@@ -125,9 +125,11 @@ curl -f http://localhost:8080/api/status
 
 ## 网页访问统计
 
-共用首页已接入自建 Umami（`https://lab.lchnan.cn`），Worker 和 Docker 版均使用同一站点 ID。统计脚本以 `defer` 加载，自动记录网页访问；没有添加下载或安装完成事件，终端安装和 Decky 商店 API 请求也不会触发网页统计。
+共用首页已接入自建 Umami（`https://lab.lchnan.cn`），Worker 和 Docker 版均使用同一站点 ID。统计脚本以 `defer` 加载，自动记录网页访问；另异步加载 `recorder.js`，供回放和热图采集网页操作。没有添加下载或安装完成事件，终端安装和 Decky 商店 API 请求也不会触发网页统计。
 
-`web/index.html` 中的 `data-domains` 将上报限定为 `cndecky.lchnan.cn` 和 `decky.lchnan.cn`，本地预览不计入。部署到其他域名或复用本仓库时，请修改跟踪脚本的 `src`、`data-website-id` 和 `data-domains`，或移除该标签以关闭统计；站点 ID 是公开配置，不是 API token。
+`web/index.html` 中的 `data-domains` 将上报限定为 `cndecky.lchnan.cn` 和 `decky.lchnan.cn`，本地预览不计入。录制器不支持该属性，因此首页使用同一域名列表决定是否加载它；脚本地址和站点 ID 也从跟踪标签读取。部署到其他域名或复用本仓库时，请修改跟踪脚本的 `src`、`data-website-id` 和 `data-domains`；关闭统计时同时移除跟踪标签和紧随其后的录制器加载脚本。站点 ID 是公开配置，不是 API token。
+
+在 Umami 的站点设置 → **Replays & Heatmaps** 中开启对应开关，并设置各自的采样率、输入遮罩级别和最长录制时间。页面沿用后台配置；采样率低于 100% 时，并非每次访问都会生成回放或热图。只记录启用后的新会话，无法补录历史访问。[回放说明](https://docs.umami.is/docs/replays)、[热图说明](https://docs.umami.is/docs/heatmaps)。
 
 ## 开发与验证
 
