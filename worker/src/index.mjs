@@ -9,6 +9,9 @@ const HOSTS = new Set(['plugins.deckbrew.xyz', 'cdn.tzatzikiweeb.moe', 'api.gith
   'github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com']);
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 const MAX_FILE = 256 * 1024 ** 2;
+const LAUNCHER_PATH = /^\/launchers\/(install|configure|restore)\.desktop$/;
+const ARTIFACT_PATH = /^\/artifacts\/([0-9a-f]{64})\.zip$/;
+const LOADER_PATH = /^\/loader\/(v\d+\.\d+\.\d+)\/PluginLoader$/;
 const encoder = new TextEncoder();
 
 class GatewayError extends Error {
@@ -44,7 +47,7 @@ function headers(type = 'application/json; charset=utf-8') {
     'Access-Control-Allow-Origin': 'https://steamloopback.host',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'X-Decky-Version, Content-Type',
-    'Access-Control-Expose-Headers': 'X-CNDecky-Cache',
+    'Access-Control-Expose-Headers': 'X-CNDecky-Cache, Retry-After',
     'X-CNDecky-Cache': 'BYPASS',
     'Vary': 'Origin',
   });
@@ -56,6 +59,24 @@ function response(request, body, type, status = 200, filename) {
   if (filename) h.set('Content-Disposition', `attachment; filename="${filename}"`);
   if (status !== 204) h.set('Content-Length', String(encoder.encode(data).length));
   return new Response(request.method === 'HEAD' || status === 204 ? null : data, { status, headers: h });
+}
+
+async function limitDownload(request, env, path) {
+  if (request.method !== 'GET' || !(path === '/install.sh' || path === '/client.py' ||
+      LAUNCHER_PATH.test(path) || ARTIFACT_PATH.test(path) || LOADER_PATH.test(path))) return;
+  // Cloudflare supplies this header. Client-controlled forwarding headers must
+  // never provide an alternate bucket, and all download paths share one quota.
+  const ip = request.headers.get('CF-Connecting-IP');
+  if (!ip) throw new GatewayError('无法识别客户端 IP，暂时无法下载', 400);
+  let result;
+  try { result = await env['rate limit'].limit({ key: `cndecky-download:${ip}` }); }
+  catch { throw new GatewayError('下载限流服务暂不可用，请稍后重试', 503); }
+  if (result?.success === true) return;
+  if (result?.success !== false) throw new GatewayError('下载限流服务暂不可用，请稍后重试', 503);
+  const denied = response(request,
+    { error: '下载请求过于频繁：每个 IP 每分钟最多 10 次，请在 60 秒后重试' }, undefined, 429);
+  denied.headers.set('Retry-After', '60');
+  return denied;
 }
 
 async function boundedJSON(res) {
@@ -205,6 +226,8 @@ export function createWorker(fetchUpstream = (...args) => fetch(...args)) {
         }
         if (!['GET', 'HEAD'].includes(request.method)) return response(request, { error: '不支持的请求方法' }, undefined, 405);
         const base = origin(env.PUBLIC_BASE_URL);
+        const limited = await limitDownload(request, env, path);
+        if (limited) return limited;
         if (path === '/healthz') return response(request, { ok: true });
         if (path === '/api/status') return response(request, {
           name: 'CNDecky', origin: base, store_url: base + '/plugins', mode: 'proxy',
@@ -215,7 +238,7 @@ export function createWorker(fetchUpstream = (...args) => fetch(...args)) {
         if (path === '/install.sh') return response(request,
           bundle.installer.replace('@ORIGIN@', `'${base}'`), 'text/x-shellscript; charset=utf-8');
         let match;
-        if ((match = /^\/launchers\/(install|configure|restore)\.desktop$/.exec(path))) {
+        if ((match = LAUNCHER_PATH.exec(path))) {
           if (!base.startsWith('https:')) throw new GatewayError('桌面安装器需要已部署的 HTTPS 域名，本机 HTTP 页面仅供预览', 409);
           return response(request, bundle.launchers[match[1]].replaceAll(bundle.placeholder, base),
             'application/x-desktop; charset=utf-8', 200, `CNDecky-${match[1]}.desktop`);
@@ -262,10 +285,10 @@ export function createWorker(fetchUpstream = (...args) => fetch(...args)) {
           }
           return response(request, data);
         }
-        if ((match = /^\/artifacts\/([0-9a-f]{64})\.zip$/.exec(path))) {
+        if ((match = ARTIFACT_PATH.exec(path))) {
           return await stream(request, env, `${CDN}/versions/${match[1]}.zip`, 'application/zip');
         }
-        if ((match = /^\/loader\/(v\d+\.\d+\.\d+)\/PluginLoader$/.exec(path))) {
+        if ((match = LOADER_PATH.exec(path))) {
           const meta = await release(env, base, match[1]);
           return await stream(request, env,
             `https://github.com/SteamDeckHomebrew/decky-loader/releases/download/${match[1]}/PluginLoader`,

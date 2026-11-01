@@ -89,6 +89,17 @@ Cloudflare 会按 `worker/package-lock.json` 安装依赖。构建命令生成�
 
 部分插件的额外依赖、插件自身的联网服务，以及 Decky 自带的本体更新请求不经过此入口。本体更新可重新运行网页安装器。实际速度需从掌机网络测试；Cloudflare 转发不承诺国内线路加速。
 
+## 下载限流
+
+Worker 使用现有的 `rate limit` 绑定（命名空间 `1`），每个 IP 每 60 秒共享 10 次下载额度。配置已写入 `worker/wrangler.jsonc`，随 GitHub 自动构建一起部署；生产环境需要保留此绑定。
+
+- 计数范围：GET `/launchers/{install,configure,restore}.desktop`、`/install.sh`、`/client.py`、`/loader/vX.Y.Z/PluginLoader`、`/artifacts/<sha256>.zip`。不同文件和查询参数共用额度，一次从桌面启动器开始的完整安装通常使用 4 次。
+- 不计数：网页、JS/CSS、封面、插件列表、版本和健康检查等 API，以及所有 HEAD / OPTIONS 请求。限流不会降低已经开始的下载的传输速度。
+- 在访问上游前检查额度，超过时返回 JSON `429` 和 `Retry-After: 60`；等待 60 秒后再下载。已获准但随后失败的下载也会计数。
+- IP 只取 Cloudflare 提供的 `CF-Connecting-IP`，不使用访客可自行填写的 `X-Forwarded-For` / `X-Real-IP`。共用出口 IP 的设备共用额度；应用不会记录 IP 日志。缺少该头时下载返回 `400`，绑定缺失或不可用时下载返回 `503`，页面和查询仍可访问。
+
+Cloudflare 的计数按数据中心维护并异步更新，因此是近似限流，不是跨全球节点的严格计费配额。此实现沿用现有命名空间，以 `cndecky-download:` 为计数键前缀；同一账户中使用相同命名空间和键的其他 Worker 会共享计数。[官方限流说明](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
+
 ## 验证
 
 ```sh
@@ -96,6 +107,6 @@ npm test
 npm run check
 ```
 
-测试覆盖共用安装资源一致性、GET/HEAD/CORS、下载链接重写、白名单与重定向、凭据隔离、上游失败、流式传输及截断。`npm run check` 使用 Wrangler 构建；本地运行时和真实上游的连通性需结合 `npm run dev` 验证。没有实际部署前，不代表 Cloudflare 线上出口或掌机线路已验证。
+测试覆盖共用安装资源一致性、GET/HEAD/CORS、下载链接重写、白名单与重定向、凭据隔离、上游失败、流式传输及截断，以及下载额度共享、IP 隔离、限流错误和不计数路由。`npm run check` 使用 Wrangler 构建；本地运行时和真实上游的连通性需结合 `npm run dev` 验证。没有实际部署前，不代表 Cloudflare 线上出口或掌机线路已验证。
 
 参考：[Worker 静态资源](https://developers.cloudflare.com/workers/static-assets/)、[自定义域名](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)、[流式响应](https://developers.cloudflare.com/workers/runtime-apis/streams/)、[平台限制](https://developers.cloudflare.com/workers/platform/limits/)。

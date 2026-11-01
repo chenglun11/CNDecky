@@ -8,7 +8,8 @@ import { createWorker } from '../src/index.mjs';
 const base = 'https://decky.example.com';
 const hash = 'a'.repeat(64);
 const cdn = 'https://cdn.tzatzikiweeb.moe/file/steam-deck-homebrew';
-const env = { PUBLIC_BASE_URL: base, ASSETS: { fetch: async () => new Response('web') } };
+const env = { PUBLIC_BASE_URL: base, ASSETS: { fetch: async () => new Response('web') },
+  'rate limit': { limit: async () => ({ success: true }) } };
 const js = value => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
 function fixture() {
   return [{ id: 1, name: 'CSS Loader', author: 'Author', description: 'Theme', tags: ['Theme'], downloads: 100,
@@ -19,7 +20,9 @@ function release() {
     browser_download_url: 'https://github.com/SteamDeckHomebrew/decky-loader/releases/download/v3.3.1/PluginLoader' }] };
 }
 function call(worker, path, options = {}, config = env) {
-  return worker.fetch(new Request('https://untrusted-host.example' + path, options), config);
+  const headers = new Headers(options.headers);
+  headers.set('CF-Connecting-IP', '198.51.100.7');
+  return worker.fetch(new Request('https://untrusted-host.example' + path, { ...options, headers }), config);
 }
 
 test('shared client, digest and installers are identical across backends; Host cannot change origin', async () => {
