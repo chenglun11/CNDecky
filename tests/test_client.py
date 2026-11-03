@@ -1,14 +1,86 @@
 import importlib.util
+import hashlib
+import io
+import itertools
 import json
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from contextlib import redirect_stderr
 
 spec = importlib.util.spec_from_file_location('client', Path(__file__).resolve().parents[1]/'scripts/client.py')
 client = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(client)
+
+
+class DownloadProgressTests(unittest.TestCase):
+    def download(self, payload, headers=None, expected=None, total=None, output=None, progress=True):
+        response = io.BytesIO(payload)
+        response.headers = headers or {}
+        output = output if output is not None else io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'download'
+            with patch.object(client, 'build_opener') as opener, redirect_stderr(output):
+                opener.return_value.open.return_value = response
+                client.download('https://decky.example.com/file', target,
+                                expected=expected, progress=progress, total=total)
+            self.assertEqual(target.read_bytes(), payload)
+        return output.getvalue()
+
+    def test_known_size_shows_bytes_percent_speed_eta_and_verified_completion(self):
+        payload = b'x' * (128 * 1024)
+        log = self.download(payload, expected=hashlib.sha256(payload).hexdigest(), total=len(payload))
+        for text in ('正在连接', '100%', '0.1 MiB / 0.1 MiB', 'MiB/s', '预计剩余', 'SHA-256 校验通过'):
+            self.assertIn(text, log)
+
+    def test_content_length_is_used_when_release_size_is_missing(self):
+        self.assertIn('100%', self.download(b'x' * 1024, {'Content-Length': '1024'}))
+
+    def test_unknown_or_invalid_length_shows_bytes_without_inventing_percent(self):
+        for headers in ({}, {'Content-Length': 'unknown'}, {'Content-Length': '-1'}):
+            log = self.download(b'x' * 1024, headers)
+            self.assertIn('已下载', log)
+            self.assertIn('MiB/s', log)
+            self.assertNotIn('%', log)
+            self.assertNotIn('预计剩余', log)
+
+    def test_hash_failure_never_reports_success(self):
+        output = io.StringIO()
+        with self.assertRaisesRegex(client.InstallError, 'SHA-256'):
+            self.download(b'broken', expected='0' * 64, output=output)
+        self.assertIn('正在校验', output.getvalue())
+        self.assertNotIn('校验通过', output.getvalue())
+
+    def test_progress_updates_before_download_finishes(self):
+        with patch.object(client.time, 'monotonic', side_effect=itertools.count()):
+            log = self.download(b'x' * (256 * 1024), total=256 * 1024)
+        for percent in ('25%', '50%', '75%', '100%'):
+            self.assertIn(percent, log)
+
+    def test_other_downloads_remain_quiet(self):
+        self.assertEqual(self.download(b'metadata', progress=False), '')
+
+    def test_timeout_preserves_progress_and_never_reports_success(self):
+        class StalledResponse(io.BytesIO):
+            headers = {}
+
+            def read1(self, size):
+                chunk = super().read1(size)
+                if not chunk:
+                    raise TimeoutError('timed out')
+                return chunk
+
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(client, 'build_opener') as opener, redirect_stderr(output):
+                opener.return_value.open.return_value = StalledResponse(b'partial')
+                with self.assertRaises(TimeoutError):
+                    client.download('https://decky.example.com/file', Path(directory) / 'download', progress=True)
+        self.assertIn('已下载', output.getvalue())
+        self.assertTrue(output.getvalue().endswith('\n'))
+        self.assertNotIn('下载完成', output.getvalue())
 
 
 class InstallerTests(unittest.TestCase):

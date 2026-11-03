@@ -12,6 +12,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -40,18 +41,59 @@ class SameOriginRedirect(HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def download(url, destination, expected=None, limit=256 * 1024**2):
+def download(url, destination, expected=None, limit=256 * 1024**2, *, progress=False, total=None):
     digest, size = hashlib.sha256(), 0
     request = Request(url, headers={"User-Agent": "CNDecky-Installer/0.1"})
+    if progress:
+        print("正在连接下载源，等待数据…（网络无响应时会超时报错）", file=sys.stderr, flush=True)
     with build_opener(ProxyHandler({}), SameOriginRedirect()).open(request, timeout=60) as response, open(destination, "wb") as output:
-        while chunk := response.read(64 * 1024):
-            size += len(chunk)
-            if size > limit:
-                raise InstallError("下载文件超过大小限制")
-            output.write(chunk)
-            digest.update(chunk)
+        if not isinstance(total, int) or not 0 < total <= limit:
+            try:
+                total = int(response.headers.get("Content-Length", ""))
+            except (ValueError, TypeError):
+                total = 0
+            if not 0 < total <= limit:
+                total = 0
+        started = time.monotonic()
+        last_update = started
+        interactive = sys.stderr.isatty()
+
+        def show_progress(final=False):
+            elapsed = max(time.monotonic() - started, 0.001)
+            speed = size / elapsed
+            message = f"已下载 {size / 1024**2:.1f} MiB"
+            if total:
+                percent = min(100, size * 100 // total)
+                remaining = max(0, int((total - size) / speed)) if speed else 0
+                message += f" / {total / 1024**2:.1f} MiB  {percent:3d}%"
+            message += f"  {speed / 1024**2:.2f} MiB/s"
+            if total and speed:
+                message += f"  预计剩余 {remaining // 60:02d}:{remaining % 60:02d}"
+            print(("\r\033[2K" if interactive else "") + message,
+                  end="\n" if final or not interactive else "", file=sys.stderr, flush=True)
+
+        # read1 returns available data without waiting to fill a whole 64 KiB block.
+        read = getattr(response, "read1", response.read)
+        try:
+            while chunk := read(64 * 1024):
+                size += len(chunk)
+                if size > limit:
+                    raise InstallError("下载文件超过大小限制")
+                output.write(chunk)
+                digest.update(chunk)
+                now = time.monotonic()
+                if progress and (last_update == started or now - last_update >= 1):
+                    show_progress()
+                    last_update = now
+        finally:
+            if progress:
+                show_progress(final=True)
+    if progress and expected:
+        print("下载结束，正在校验 SHA-256…", file=sys.stderr, flush=True)
     if expected and digest.hexdigest() != expected:
         raise InstallError("安装包 SHA-256 校验失败，现有 Decky 未被修改")
+    if progress:
+        print("SHA-256 校验通过。" if expected else "下载完成。", file=sys.stderr, flush=True)
 
 
 def read_settings(path):
@@ -301,8 +343,9 @@ def main():
                 raise InstallError("镜像返回了无效安装包地址或摘要")
             if not args.dry_run:
                 staged = temp / "PluginLoader"
-                print(f"下载 Decky {version}，校验官方 SHA-256…", flush=True)
-                download(asset["url"], staged, expected=asset["sha256"])
+                print(f"准备下载 Decky {version}，下载完成后校验官方 SHA-256。", flush=True)
+                download(asset["url"], staged, expected=asset["sha256"],
+                         progress=True, total=asset.get("size"))
                 if staged.read_bytes()[:4] != b"\x7fELF":
                     raise InstallError("下载文件不是 Linux 可执行文件")
         elif not args.restore_official:

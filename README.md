@@ -99,6 +99,8 @@ sh ~/cndecky-install.sh --restore-official
 
 脚本先从本站下载客户端并校验摘要。安装客户端再下载官方稳定版二进制，校验 GitHub release 的 SHA-256，下载完整后才停止 Decky、备份配置并变更文件。所有请求都使用 HTTPS；这里的信任根是你自己部署的域名和服务器，摘要检测损坏，不能防止镜像服务器本身被篡改。
 
+下载 Decky 时，终端显示已下载大小、百分比、平均速度和预计剩余时间；无法获知总大小时显示已下载量和速度。连接等待与 SHA-256 校验分别提示，校验成功后才进入安装。进度随数据到达刷新，网络暂时停滞时数字也会停住，等待数据超时会报错退出。
+
 配置文件为 `~/homebrew/settings/loader.json`。切换时设置 `store=2`、`store-url=https://你的域名/plugins`；恢复时设 `store=0` 并删除 `store-url`，其他设置保留。修改期间会停止并恢复原本运行的 Decky 服务，避免配置被旧进程覆盖。
 
 备份保存在 `~/homebrew/.cndecky-backups/<时间戳>/`，其中 `manifest.json` 对应原文件路径与数字命名的备份文件。重装不清空整个 `services`、`plugins` 或 `settings` 目录。遇到异常后可结合备份和 `journalctl -u plugin_loader` 排查。
